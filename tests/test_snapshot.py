@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from pathlib import Path
 
-from conftest import TRIAL, Replay
+from conftest import SNAPSHOT, TRIAL, Replay
 
 from tetrak_authority import ARMENIAN, HISTORIC_ARMENIA, Box, Client, Scope
 from tetrak_authority.snapshot import (
@@ -18,6 +19,7 @@ from tetrak_authority.snapshot import (
     fetch,
     fetch_resilient,
     names_query,
+    rekey,
 )
 from tetrak_authority.wikidata import RequestFailed
 
@@ -124,7 +126,7 @@ class TestOverRecordings:
         lines: list[str] = []
         manifest = build(client, tmp_path / "trial", ARMENIAN, limit=2, log=lines.append)
         assert manifest["counts"] == {"person": 2, "organisation": 2, "place": 2}
-        assert manifest["format"] == 1 and manifest["endpoint"] == client.endpoint
+        assert manifest["format"] == 2 and manifest["endpoint"] == client.endpoint
         assert manifest["scope"]["languages"] == ["hy", "hyw"] and manifest["limit"] == 2
         assert set(manifest["queries"]) == {"person", "organisation", "place"}
         assert manifest["requests"] == client.requests == 9
@@ -231,3 +233,31 @@ class TestResilience:
         )
         assert manifest["fetch_endpoint"] == manifest["endpoint"] == client.endpoint
         assert client.requests == 1 and fetcher.requests == 2 and manifest["requests"] == 3
+
+
+class TestRekey:
+    def test_rekeys_every_name_in_place_and_updates_the_manifest(self, tmp_path: Path) -> None:
+        shutil.copytree(SNAPSHOT, tmp_path / "s")
+        stale = json.loads(
+            (tmp_path / "s" / "entities.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        stale["names"] = [[*n[:3], "stale"] for n in stale["names"]]
+        stale["keys"] = ["stale"]
+        rest = (tmp_path / "s" / "entities.jsonl").read_text(encoding="utf-8").splitlines()[1:]
+        (tmp_path / "s" / "entities.jsonl").write_text(
+            "\n".join([json.dumps(stale, ensure_ascii=False), *rest]) + "\n", encoding="utf-8"
+        )
+        lines: list[str] = []
+        manifest = rekey(tmp_path / "s", log=lines.append)
+        assert (
+            manifest["format"] == 2
+            and manifest["fold"].startswith("tetrak-translit ")
+            and manifest["rekeyed"]
+        )
+        first = json.loads(
+            (tmp_path / "s" / "entities.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert "stale" not in first["keys"] and "ovanes tumanian" in first["keys"]
+        assert all(len(n) == 4 for n in first["names"])
+        assert not (tmp_path / "s" / "entities.jsonl.rekeyed").exists()
+        assert lines[-1].startswith("6 entities re-keyed with tetrak-translit")

@@ -6,6 +6,7 @@
     tetrak-authority snapshot --out snapshots/hy   # build a dated snapshot
     tetrak-authority lookup --snapshot snapshots/hy "Tumanyan, Hovhannes"
     tetrak-authority show --snapshot snapshots/hy Q380797
+    tetrak-authority rekey --snapshot snapshots/hy   # after a tetrak-translit upgrade
     tetrak-authority search "Նարեկացի"             # a one-off live search
 
 Exit status is 0 on success, 1 when a lookup finds nothing, and 2 for a
@@ -24,7 +25,7 @@ from typing import Any
 from . import __version__
 from .authority import Authority
 from .model import KINDS
-from .snapshot import ARMENIAN, Box, Scope, build, count
+from .snapshot import ARMENIAN, Box, Scope, build, count, rekey
 from .wikidata import QLEVER, WDQS, Client, RequestFailed, user_agent
 
 KIND_CHOICES = (*KINDS, "agent")
@@ -108,6 +109,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="keep the entities already in the output and fetch only the rest",
     )
 
+    rekeying = commands.add_parser(
+        "rekey",
+        help="recompute every key in a snapshot with the installed tetrak-translit, after an upgrade of it",
+    )
+    rekeying.add_argument("--snapshot", type=Path, required=True, help="the snapshot directory")
+    rekeying.add_argument(
+        "--script", default=None, help="the tetrak-translit script (default: the manifest's)"
+    )
+
     lookup = commands.add_parser(
         "lookup", help="the entities a name reaches in a snapshot, and their names"
     )
@@ -187,6 +197,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 log=lambda line: print(line, file=sys.stderr),
                 fetch_client=client_of(args, args.fetch_endpoint),
                 resume=args.resume,
+            )
+            print(json.dumps(manifest, indent=2, ensure_ascii=False))
+            return 0
+        if args.command == "rekey":
+            manifest = rekey(
+                args.snapshot, args.script, log=lambda line: print(line, file=sys.stderr)
             )
             print(json.dumps(manifest, indent=2, ensure_ascii=False))
             return 0

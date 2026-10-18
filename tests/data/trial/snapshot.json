@@ -1,7 +1,8 @@
 {
-  "format": 1,
+  "format": 2,
   "date": "2026-10-18",
   "endpoint": "https://qlever.dev/api/wikidata",
+  "fetch_endpoint": "https://qlever.dev/api/wikidata",
   "scope": {
     "script": "hy",
     "languages": [
@@ -51,8 +52,9 @@
     "organisation": 2,
     "place": 2
   },
-  "requests": 12,
-  "seconds": 48.2,
+  "failed": [],
+  "requests": 9,
+  "seconds": 0.0,
   "library": "tetrak-authority 0.0.0",
   "fold": "tetrak-translit 3.4.0"
 }

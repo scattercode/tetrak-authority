@@ -64,6 +64,9 @@ ORGANISATION_CLASSES = (
     "Q41298",  # magazine
 )
 
+#: The snapshot format: 2 stores each name's fold key beside it.
+FORMAT = 2
+
 #: The facts fetched for every entity: property → the name it is kept under.
 FACT_PROPERTIES = {
     "P31": "class",
@@ -394,7 +397,7 @@ def build(
                 )
     requests = client.requests + (fetcher.requests if fetcher is not client else 0)
     manifest = {
-        "format": 1,
+        "format": FORMAT,
         "date": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d"),
         "endpoint": client.endpoint,
         "fetch_endpoint": fetcher.endpoint,
@@ -411,6 +414,43 @@ def build(
     (out / "snapshot.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+    return manifest
+
+
+def rekey(
+    path: Path, script: str | None = None, log: Callable[[str], None] | None = None
+) -> dict[str, Any]:
+    """Recompute every key in a snapshot with the installed tetrak-translit, in place.
+
+    For a snapshot written before keys were stored, and after a release
+    of tetrak-translit that moves keys, when nothing else has changed and
+    a refetch would be waste. Rewrites ``entities.jsonl`` and updates the
+    manifest's ``fold`` and ``format``; returns the manifest.
+    """
+    say = log or (lambda line: None)
+    manifest_file = path / "snapshot.json"
+    manifest: dict[str, Any] = (
+        json.loads(manifest_file.read_text(encoding="utf-8")) if manifest_file.exists() else {}
+    )
+    script = script or str(manifest.get("scope", {}).get("script", "hy"))
+    source = path / "entities.jsonl"
+    target = path / "entities.jsonl.rekeyed"
+    count = 0
+    with source.open(encoding="utf-8") as lines, target.open("w", encoding="utf-8") as out:
+        for line in lines:
+            if line.strip():
+                out.write(Entity.from_json(json.loads(line)).rekeyed(script).line() + "\n")
+                count += 1
+                if count % 10000 == 0:
+                    say(f"{count} entities re-keyed")
+    target.replace(source)
+    manifest["format"] = FORMAT
+    manifest["fold"] = f"tetrak-translit {tetrak_translit.__version__}"
+    manifest["rekeyed"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    manifest_file.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    say(f"{count} entities re-keyed with {manifest['fold']}")
     return manifest
 
 
@@ -431,6 +471,7 @@ def _version() -> str:
 __all__ = [
     "ARMENIAN",
     "FACT_PROPERTIES",
+    "FORMAT",
     "HISTORIC_ARMENIA",
     "ORGANISATION_CLASSES",
     "Box",
@@ -445,5 +486,6 @@ __all__ = [
     "fetch_resilient",
     "names_query",
     "point",
+    "rekey",
     "year",
 ]

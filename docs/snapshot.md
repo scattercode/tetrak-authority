@@ -6,7 +6,11 @@ A snapshot is a directory of two files:
   enumeration queries, the counts per kind, the number of requests made,
   and the versions of this package and of tetrak-translit that keyed the
   names.
-- `entities.jsonl`, one record per line, as `Entity.to_json` writes it.
+- `entities.jsonl`, one record per line, as `Entity.to_json` writes it:
+  each name as `[text, language, kind, key]`, with the fold key computed
+  when the snapshot is built, so that loading it folds nothing. The
+  manifest's `format` is 2 for that; a format-1 snapshot, written before
+  keys were stored, still loads, slowly, and `rekey` brings it up.
 
 The manifest is what a measurement cites. The same queries on another
 day give another snapshot, because Wikidata changes daily and the mirror
@@ -93,6 +97,9 @@ build a snapshot of your own.
 ## Keys and tetrak-translit
 
 The keys in a snapshot are tetrak-translit's fold keys, with the words
-sorted. A minor release of tetrak-translit can change keys (that is what
-its minor releases are for), so after upgrading it, rebuild the snapshot,
-and read the translit version in the manifest before comparing two.
+sorted, computed when the snapshot is built. A minor release of
+tetrak-translit can change keys (that is what its minor releases are
+for), so after upgrading it, run `tetrak-authority rekey --snapshot DIR`:
+it recomputes every key in place with the installed version, no refetch,
+and records the version and the date in the manifest. Read the translit
+version in the manifest before comparing two snapshots.

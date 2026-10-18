@@ -47,6 +47,24 @@ class TestEntity:
         assert established_form([]) == ""
         assert established_form([Name("b", "fr", "label"), Name("a", "de", "label")]) == "a"
 
+    def test_every_name_carries_its_key(self) -> None:
+        entity = Entity.build("Q1", "person", self.names)
+        assert {n.text: n.key for n in entity.names} == {
+            "Hovhannes Tumanyan": "ovanes tumanian",
+            "Հովհաննես Թումանյան": "ovanes tumanian",
+            "Hovhannes Toumanian": "ovanes tumanian",
+            "Ованес Туманян": "",
+        }
+        assert Name("Erevan", "en", "label").keyed().key == "erevan"
+
+    def test_a_record_can_be_rekeyed(self) -> None:
+        stale = Entity(
+            "Q1", "person", "x", (Name("Hovhannes Tumanyan", "en", "label", "old"),), ("old",)
+        )
+        fresh = stale.rekeyed()
+        assert fresh.names[0].key == "ovanes tumanian" and fresh.keys == ("ovanes tumanian",)
+        assert fresh.label == "x" and fresh.id == "Q1"
+
     def test_json_round_trips(self) -> None:
         entity = Entity.build(
             "Q1953",
@@ -73,6 +91,7 @@ class TestEntity:
             }
         )
         assert entity.identifiers == {} and entity.classes == () and entity.coordinates is None
+        assert entity.names[0].key == ""  # a line written before keys were stored
 
 
 class TestFactParsing:

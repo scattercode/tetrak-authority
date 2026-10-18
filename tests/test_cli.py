@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,17 @@ class TestLookup:
     def test_a_partial_match_is_marked(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert cli.main(["lookup", "--snapshot", str(SNAPSHOT), "Tadevosi Tumanyan"]) == 0
         assert "partial" in capsys.readouterr().out
+
+
+class TestRekey:
+    def test_rekeys_a_copy_of_the_fixture(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        shutil.copytree(SNAPSHOT, tmp_path / "s")
+        assert cli.main(["rekey", "--snapshot", str(tmp_path / "s")]) == 0
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["format"] == 2
+        assert "6 entities re-keyed" in captured.err
 
 
 class TestShow:

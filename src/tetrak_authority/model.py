@@ -30,7 +30,7 @@ NAME_KINDS = ("label", "alias", "native", "official")
 PREFERRED_LANGUAGES = ("hy", "hyw", "en")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Name:
     """One name of an entity, as Wikidata records it.
 
@@ -39,11 +39,20 @@ class Name:
         language: Its language code (``hy``, ``hyw``, ``en``, ``ru`` …).
         kind: ``label``, ``alias``, ``native`` (property P1559) or
             ``official`` (P1448).
+        key: The fold key of the text (see :func:`key_of`), computed when
+            the snapshot is built so that loading it folds nothing; empty
+            for a name the fold cannot key, or in a snapshot written
+            before keys were stored (``rekey`` fills them in).
     """
 
     text: str
     language: str
     kind: str
+    key: str = ""
+
+    def keyed(self, script: str = "hy") -> Name:
+        """This name with its key computed."""
+        return Name(self.text, self.language, self.kind, key_of(self.text, script))
 
 
 def key_of(text: str, script: str = "hy") -> str:
@@ -117,9 +126,13 @@ class Entity:
     ) -> Entity:
         """Assemble a record, choosing the label and folding the keys."""
         ordered = tuple(
-            sorted(set(names), key=lambda n: (NAME_KINDS.index(n.kind), n.language, n.text))
+            Name(n.text, n.language, n.kind, key_of(n.text, script))
+            for n in sorted(
+                {Name(n.text, n.language, n.kind) for n in names},
+                key=lambda n: (NAME_KINDS.index(n.kind), n.language, n.text),
+            )
         )
-        keys = sorted({key for key in (key_of(n.text, script) for n in ordered) if key})
+        keys = sorted({n.key for n in ordered if n.key})
         return cls(
             id=id,
             kind=kind,
@@ -140,7 +153,7 @@ class Entity:
             "id": self.id,
             "kind": self.kind,
             "label": self.label,
-            "names": [[n.text, n.language, n.kind] for n in self.names],
+            "names": [[n.text, n.language, n.kind, n.key] for n in self.names],
             "keys": list(self.keys),
             "classes": list(self.classes),
             "identifiers": self.identifiers,
@@ -158,7 +171,7 @@ class Entity:
             id=data["id"],
             kind=data["kind"],
             label=data["label"],
-            names=tuple(Name(*n) for n in data["names"]),
+            names=tuple(Name(*n) for n in data["names"]),  # three fields before keys were stored
             keys=tuple(data["keys"]),
             classes=tuple(data.get("classes", ())),
             identifiers=dict(data.get("identifiers") or {}),
@@ -171,6 +184,23 @@ class Entity:
     def line(self) -> str:
         """The record as one line of JSON, for ``entities.jsonl``."""
         return json.dumps(self.to_json(), ensure_ascii=False)
+
+    def rekeyed(self, script: str = "hy") -> Entity:
+        """This record with every name's key, and the record's keys, computed afresh."""
+        names = tuple(n.keyed(script) for n in self.names)
+        return Entity(
+            id=self.id,
+            kind=self.kind,
+            label=self.label,
+            names=names,
+            keys=tuple(sorted({n.key for n in names if n.key})),
+            classes=self.classes,
+            identifiers=dict(self.identifiers or {}),
+            born=self.born,
+            died=self.died,
+            coordinates=self.coordinates,
+            description=self.description,
+        )
 
 
 def established_form(

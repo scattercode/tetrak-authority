@@ -52,19 +52,30 @@ class Authority:
         self.manifest = manifest or {}
         self._entities: dict[str, Entity] = {}
         self._by_key: dict[str, list[tuple[Entity, Name]]] = {}
-        self._by_word: dict[str, set[str]] = {}
+        self._words: dict[str, set[str]] | None = None
         for entity in entities:
             self._entities[entity.id] = entity
             # Index the preferred languages' names first, so that a match
             # reports the form a cataloguer recognises rather than the first
-            # language alphabetically.
+            # language alphabetically. Keys were computed when the snapshot
+            # was built; a name from before keys were stored is folded here.
             for name in sorted(entity.names, key=_preference):
-                key = key_of(name.text, script)
-                if not key:
-                    continue
-                self._by_key.setdefault(key, []).append((entity, name))
+                if not name.key and name.kind in NAME_KINDS:
+                    name = name.keyed(script)
+                if name.key:
+                    self._by_key.setdefault(name.key, []).append((entity, name))
+
+    @property
+    def _by_word(self) -> dict[str, set[str]]:
+        """Word to entity ids, for partial matches; built on first use."""
+        if self._words is None:
+            self._words = {}
+            for key, matches in self._by_key.items():
                 for word in key.split():
-                    self._by_word.setdefault(word, set()).add(entity.id)
+                    ids = self._words.setdefault(word, set())
+                    for entity, _ in matches:
+                        ids.add(entity.id)
+        return self._words
 
     @classmethod
     def load(cls, path: Path | str) -> Authority:
@@ -132,7 +143,7 @@ class Authority:
                 if id in seen or (wanted is not None and entity.kind not in wanted):
                     continue
                 for name in entity.names:
-                    name_words = set(key_of(name.text, self.script).split())
+                    name_words = set((name.key or key_of(name.text, self.script)).split())
                     if name_words >= set(words):
                         seen.add(id)
                         matches.append(Match(entity, name, exact=False))

@@ -97,6 +97,8 @@ is public: `tetrak-authority search "Նարեկացի"`.
   label gets no key, but it is kept as a name to index.
 - **Stay current by itself.** A snapshot is a date. Rebuild it on a
   cadence and re-run whatever measure depends on it, citing the date.
+  After a tetrak-translit upgrade, `rekey` recomputes the keys in place
+  without a refetch.
 
 ## Etiquette
 

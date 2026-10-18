@@ -51,11 +51,13 @@ recorded under `tests/data/recorded/` by `tests/record.py`.
 
 ### Keys come from tetrak-translit, and move with it
 
-A lookup matches on fold keys, and the fold is tetrak-translit's. A
-release of it that changes keys changes this package's keys too, so the
-dependency is pinned to the major, a snapshot must be rebuilt (or at
-least re-keyed) after a minor release, and `snapshot.json` records the
-translit version. Nothing here folds anything itself.
+A lookup matches on fold keys, and the fold is tetrak-translit's. Keys
+are computed when a snapshot is built and stored beside each name, so a
+release of tetrak-translit that changes keys changes this package's keys
+too: the dependency is pinned to the major, `tetrak-authority rekey`
+recomputes a snapshot's keys in place after a minor release, and
+`snapshot.json` records the translit version. Nothing here folds
+anything itself.
 
 ### The fetch is batched and the entity is the contract
 

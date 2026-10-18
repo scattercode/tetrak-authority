@@ -17,6 +17,7 @@ tetrak-authority snapshot --out trial --limit 20         # a trial run, twenty i
 tetrak-authority lookup --snapshot snapshots/hy "Tumanyan, Hovhannes" "Tiflis"
 tetrak-authority lookup --snapshot snapshots/hy --json "Գրիգոր Նարեկացի"
 tetrak-authority show --snapshot snapshots/hy Q380797
+tetrak-authority rekey --snapshot snapshots/hy          # after a tetrak-translit upgrade
 tetrak-authority search "Նարեկացի"
 ```
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from conftest import SNAPSHOT
@@ -20,6 +21,14 @@ class TestLoading:
     def test_a_jsonl_file_loads_alone(self) -> None:
         authority = Authority.load(SNAPSHOT / "entities.jsonl")
         assert len(authority) == 6 and authority.manifest == {}
+
+    def test_a_snapshot_written_before_keys_were_stored_still_matches(self, tmp_path: Path) -> None:
+        old = Entity.build("Q1", "person", [Name("Hovhannes Tumanyan", "en", "label")]).to_json()
+        old["names"] = [n[:3] for n in old["names"]]
+        (tmp_path / "entities.jsonl").write_text(json.dumps(old, ensure_ascii=False) + "\n")
+        authority = Authority.load(tmp_path)
+        assert [m.entity.id for m in authority.match("Tumanyan, Hovhannes")] == ["Q1"]
+        assert [m.entity.id for m in authority.match("Tumanyan Hovhannes Tadevosi")] == []
 
     def test_a_directory_without_a_manifest(self, tmp_path: Path) -> None:
         (tmp_path / "entities.jsonl").write_text(

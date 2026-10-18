@@ -13,7 +13,10 @@ authority.get("Q380797")  # one Entity, or None
 
 `load` takes a snapshot directory (`snapshot.json` beside
 `entities.jsonl`) or a `.jsonl` file alone. The script that keys the
-names is read from the manifest and defaults to Armenian.
+names is read from the manifest and defaults to Armenian. The keys were
+computed when the snapshot was built, so loading parses JSON and folds
+nothing; the index for partial matches is built on the first lookup
+that needs it.
 
 ## Looking a name up
 
