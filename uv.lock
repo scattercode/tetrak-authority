@@ -1411,11 +1411,11 @@ provides-extras = ["apidocs", "dev"]
 
 [[package]]
 name = "tetrak-translit"
-version = "3.4.0"
+version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3d/07/395bda9ccb40e6367faef28a81a358ff5f761d0f4317276db4b2e00f333d/tetrak_translit-3.4.0.tar.gz", hash = "sha256:6d87be19d5cce88b8c29ade49253bf40c28d0f3ba165ea619e548090e957722d", size = 207009, upload-time = "2026-10-18T19:52:27.946Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/e3/fb1e0d3331084d3f2c0d4179a00b35b2a83eb68697227df983aceab1d569/tetrak_translit-3.5.0.tar.gz", hash = "sha256:15e7b0a0ddc0dcbbffd658b352e7d7d6b4bea70750269ccbb097f0dc525b8520", size = 211634, upload-time = "2026-10-18T23:05:11.446Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/76/6df283e19bf9656b66fc8c9ca2a928219460f80a884109e7a9d0dccc7e96/tetrak_translit-3.4.0-py3-none-any.whl", hash = "sha256:3d5bc2ffd7deab05df30095f86aaa7c4e7bc45e516bac181b556c3ef4dcdeefa", size = 51177, upload-time = "2026-10-18T19:52:26.465Z" },
+    { url = "https://files.pythonhosted.org/packages/64/46/c094ddc235fd1b0f428f287fff49508b150e083c954bd750666db46ac62c/tetrak_translit-3.5.0-py3-none-any.whl", hash = "sha256:498250ede377c09b2e8ea67940906eab5e5e9d6fbb3a67621d6c2d2211a96de3", size = 53203, upload-time = "2026-10-18T23:05:09.99Z" },
 ]
 
 [[package]]

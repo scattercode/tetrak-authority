@@ -9,7 +9,7 @@ from pathlib import Path
 
 from conftest import SNAPSHOT, TRIAL, Replay
 
-from tetrak_authority import ARMENIAN, HISTORIC_ARMENIA, Box, Client, Scope
+from tetrak_authority import ARMENIAN, HISTORIC_ARMENIA, Box, Client, Scope, key_of
 from tetrak_authority.snapshot import (
     FACT_PROPERTIES,
     batches,
@@ -22,6 +22,13 @@ from tetrak_authority.snapshot import (
     rekey,
 )
 from tetrak_authority.wikidata import RequestFailed
+
+
+def without_keys(entity: dict[str, object]) -> dict[str, object]:
+    """A record with the fold keys left out, which the installed tetrak-translit decides."""
+    names = entity["names"]
+    assert isinstance(names, list)
+    return {**entity, "names": [n[:3] for n in names], "keys": None}
 
 
 class TestScope:
@@ -145,7 +152,11 @@ class TestOverRecordings:
             for line in (TRIAL / "entities.jsonl").read_text(encoding="utf-8").splitlines()
         ]
         assert [e["id"] for e in entities] == [e["id"] for e in committed]
-        assert entities == committed
+        # Keys come from the installed tetrak-translit, whose releases move them,
+        # so compare everything but the keys, and check the keys against it.
+        assert [without_keys(e) for e in entities] == [without_keys(e) for e in committed]
+        for e in entities:
+            assert all(n[3] == key_of(n[0]) for n in e["names"])
         assert all(
             "+LIMIT+2" in url
             for url in replay.urls

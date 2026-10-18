@@ -15,5 +15,7 @@
     "place": 3
   },
   "requests": 16,
-  "note": "Six entities for the tests, fetched by tests/record.py; not a real snapshot."
+  "note": "Six entities for the tests, fetched by tests/record.py; not a real snapshot.",
+  "fold": "tetrak-translit 3.5.0",
+  "rekeyed": "2026-10-18"
 }
