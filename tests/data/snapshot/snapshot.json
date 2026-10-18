@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "date": "2026-10-18",
+  "endpoint": "https://qlever.dev/api/wikidata",
+  "scope": {
+    "script": "hy",
+    "languages": [
+      "hy",
+      "hyw"
+    ]
+  },
+  "queries": {},
+  "counts": {
+    "person": 3,
+    "place": 3
+  },
+  "requests": 16,
+  "note": "Six entities for the tests, fetched by tests/record.py; not a real snapshot."
+}

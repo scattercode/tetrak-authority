@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "date": "2026-10-18",
+  "endpoint": "https://qlever.dev/api/wikidata",
+  "scope": {
+    "script": "hy",
+    "languages": [
+      "hy",
+      "hyw"
+    ],
+    "ethnicities": [
+      "Q79797"
+    ],
+    "citizenships": [
+      "Q399"
+    ],
+    "organisation_classes": [
+      "Q43229",
+      "Q4830453",
+      "Q31855",
+      "Q3918",
+      "Q7075",
+      "Q33506",
+      "Q2085381",
+      "Q1664720",
+      "Q48204",
+      "Q7278",
+      "Q163740",
+      "Q2385804",
+      "Q1530022",
+      "Q1370598",
+      "Q44613",
+      "Q11032",
+      "Q41298"
+    ],
+    "box": {
+      "west": 26.0,
+      "south": 31.7,
+      "east": 51.6,
+      "north": 43.6
+    }
+  },
+  "queries": {
+    "person": "SELECT DISTINCT ?item WHERE { ?item wdt:P31 wd:Q5 . { { ?item rdfs:label ?l . FILTER(LANG(?l) IN (\"hy\", \"hyw\")) } UNION { ?item skos:altLabel ?l . FILTER(LANG(?l) IN (\"hy\", \"hyw\")) } } UNION { VALUES ?v { wd:Q79797 } ?item wdt:P172 ?v } UNION { VALUES ?v { wd:Q399 } ?item wdt:P27 ?v } }",
+    "organisation": "SELECT DISTINCT ?item WHERE { VALUES ?c { wd:Q43229 wd:Q4830453 wd:Q31855 wd:Q3918 wd:Q7075 wd:Q33506 wd:Q2085381 wd:Q1664720 wd:Q48204 wd:Q7278 wd:Q163740 wd:Q2385804 wd:Q1530022 wd:Q1370598 wd:Q44613 wd:Q11032 wd:Q41298 } ?item wdt:P31 ?c . { ?item rdfs:label ?l . FILTER(LANG(?l) IN (\"hy\", \"hyw\")) } UNION { ?item skos:altLabel ?l . FILTER(LANG(?l) IN (\"hy\", \"hyw\")) } }",
+    "place": "SELECT DISTINCT ?item WHERE { ?item wdt:P625 ?loc . FILTER(geof:longitude(?loc) >= 26.0 && geof:longitude(?loc) <= 51.6 && geof:latitude(?loc) >= 31.7 && geof:latitude(?loc) <= 43.6) { ?item rdfs:label ?l . FILTER(LANG(?l) IN (\"hy\", \"hyw\")) } UNION { ?item skos:altLabel ?l . FILTER(LANG(?l) IN (\"hy\", \"hyw\")) } }"
+  },
+  "limit": 2,
+  "counts": {
+    "person": 2,
+    "organisation": 2,
+    "place": 2
+  },
+  "requests": 12,
+  "seconds": 48.2,
+  "library": "tetrak-authority 0.0.0",
+  "fold": "tetrak-translit 3.4.0"
+}
