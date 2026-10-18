@@ -49,14 +49,20 @@ build(Client(), out=Path("snapshots/armenia-only"), scope=scope)
 
 ## What is fetched
 
-For every item, in batches: every label and alias in every language; the
-instance-of classes; the VIAF, GND, ISNI, LCNAF and GeoNames identifiers;
-birth and death years; coordinates; a place's native and official names;
-and the English description. Two queries per batch, so the default scope
-is about a thousand requests, a second apart, in well under an hour.
+For every item, in batches of two hundred: every label and alias in
+every language; the instance-of classes; the VIAF, GND, ISNI, LCNAF and
+GeoNames identifiers; birth and death years; coordinates; a place's
+native and official names; and the English description. Two queries per
+batch, each a few seconds on the Query Service, so the default scope is
+some sixteen hundred requests in about two and a half hours.
 
 An item found under an earlier kind is not fetched again under a later
 one: a monastery with coordinates is an organisation, not also a place.
+A batch the endpoint refuses (one item with thousands of names can
+exhaust its memory) is halved and retried down to single items, and an
+item refused on its own is listed under `failed` in the manifest and
+left out. A run that stops can be continued with `--resume`, which keeps
+what `entities.jsonl` already holds.
 
 ## Endpoints
 
@@ -64,8 +70,11 @@ Enumerating a subset by label language over the whole of Wikidata is a
 query the Wikidata Query Service cannot finish within its 60-second
 limit. The [QLever mirror](https://qlever.dev/wikidata)
 at the University of Freiburg answers it in a second from a copy a little
-behind live, so enumeration defaults to it and the manifest records the
-endpoint used. The fetch works against either; `--endpoint` chooses.
+behind live, so enumeration defaults to it (`--endpoint`). Fetching
+names and facts for a batch of ids is the other way round: the Query
+Service answers a batch of two hundred in a few seconds where the mirror
+takes several times as long, so the fetch defaults to the Query Service
+(`--fetch-endpoint`). The manifest records both.
 
 The full Wikidata dump is the other sanctioned bulk path. It is of the
 order of a hundred gigabytes compressed and well over a terabyte

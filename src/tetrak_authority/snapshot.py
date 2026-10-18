@@ -40,7 +40,7 @@ from typing import Any
 import tetrak_translit
 
 from .model import KINDS, Entity, Name
-from .wikidata import Client, Row
+from .wikidata import Client, RequestFailed, Row
 
 #: Wikidata classes that count as an organisation here: organisation and
 #: the kinds a catalogue meets as a creator or a subject.
@@ -289,6 +289,38 @@ def point(value: str) -> tuple[float, float] | None:
     return (latitude, longitude)
 
 
+def fetch_resilient(
+    client: Client,
+    ids: Sequence[str],
+    kind: str,
+    script: str = "hy",
+    failed: list[str] | None = None,
+    log: Callable[[str], None] | None = None,
+) -> list[Entity]:
+    """Fetch a batch, halving it when the endpoint refuses it, and skipping an item it will not answer.
+
+    An endpoint can run out of memory or time on one batch (a few items
+    with thousands of names), so a refused batch is split and each half
+    tried, down to single items. An item refused on its own is recorded
+    in *failed* and left out, so one bad item does not stop a snapshot.
+    """
+    try:
+        return fetch(client, ids, kind, script)
+    except RequestFailed as error:
+        if len(ids) == 1:
+            if failed is not None:
+                failed.append(ids[0])
+            if log:
+                log(f"{kind}: {ids[0]} skipped: {error}")
+            return []
+        if log:
+            log(f"{kind}: a batch of {len(ids)} refused ({str(error)[:80]}); trying halves")
+        middle = len(ids) // 2
+        return fetch_resilient(client, ids[:middle], kind, script, failed, log) + fetch_resilient(
+            client, ids[middle:], kind, script, failed, log
+        )
+
+
 def batches(items: Sequence[str], size: int) -> Iterator[Sequence[str]]:
     """Consecutive slices of *items*, each at most *size* long."""
     for start in range(0, len(items), size):
@@ -300,53 +332,78 @@ def build(
     out: Path,
     scope: Scope = ARMENIAN,
     kinds: Iterable[str] = KINDS,
-    batch: int = 300,
+    batch: int = 200,
     limit: int | None = None,
     log: Callable[[str], None] | None = None,
+    fetch_client: Client | None = None,
+    resume: bool = False,
 ) -> dict[str, Any]:
     """Enumerate, fetch and write a snapshot; return its manifest.
 
     Args:
-        client: The endpoint to read from; see :mod:`.wikidata`.
+        client: The endpoint that enumerates the subset; see :mod:`.wikidata`.
         out: The directory to write ``snapshot.json`` and ``entities.jsonl`` into.
         scope: What to cover.
         kinds: Which of ``person``, ``organisation`` and ``place`` to include.
-        batch: Items per fetch query. Three hundred keeps a names query
-            under the Query Service's limits; QLever takes more.
+        batch: Items per fetch query. Two hundred keeps a names query to
+            some thirty thousand rows, which the Query Service answers in
+            a few seconds.
         limit: Items per kind, for a trial run.
         log: Where progress lines go, if anywhere.
+        fetch_client: The endpoint that fetches names and facts, when it
+            is not the one that enumerates. The Query Service is several
+            times faster than the mirror at a batch of ids, and the
+            mirror alone can enumerate, so the command line uses both.
+        resume: Keep the entities already in ``entities.jsonl`` and fetch
+            only the rest, for a run that stopped.
 
     An item found under an earlier kind is not fetched again under a
-    later one: a monastery that is also a place is an organisation.
+    later one: a monastery that is also a place is an organisation. A
+    batch the endpoint refuses is halved and retried; an item refused on
+    its own is listed under ``failed`` in the manifest and left out.
     """
     say = log or (lambda line: None)
+    fetcher = fetch_client or client
     started = time.monotonic()
     out.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {}
+    failed: list[str] = []
     seen: set[str] = set()
+    lines_file = out / "entities.jsonl"
+    if resume and lines_file.exists():
+        with lines_file.open(encoding="utf-8") as existing:
+            seen.update(json.loads(line)["id"] for line in existing if line.strip())
+        say(f"resuming: {len(seen)} entities already written")
     translit = f"tetrak-translit {tetrak_translit.__version__}"
-    with (out / "entities.jsonl").open("w", encoding="utf-8") as lines:
+    with lines_file.open("a" if resume else "w", encoding="utf-8") as lines:
         for kind in KINDS:
             if kind not in kinds:
                 continue
-            ids = [id for id in enumerate_ids(client, scope, kind, limit) if id not in seen]
-            seen.update(ids)
+            everything = enumerate_ids(client, scope, kind, limit)
+            ids = [id for id in everything if id not in seen]
+            seen.update(everything)
+            counts[kind] = len(everything) - len(ids)
             say(f"{kind}: {len(ids)} items to fetch")
-            counts[kind] = 0
             for number, chunk in enumerate(batches(ids, batch), 1):
-                for entity in fetch(client, chunk, kind, scope.script):
+                for entity in fetch_resilient(fetcher, chunk, kind, scope.script, failed, say):
                     lines.write(entity.line() + "\n")
                     counts[kind] += 1
-                say(f"{kind}: batch {number}, {counts[kind]} written, {client.requests} requests")
+                lines.flush()
+                say(
+                    f"{kind}: batch {number}, {counts[kind]} written, {client.requests + (fetcher.requests if fetcher is not client else 0)} requests"
+                )
+    requests = client.requests + (fetcher.requests if fetcher is not client else 0)
     manifest = {
         "format": 1,
         "date": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d"),
         "endpoint": client.endpoint,
+        "fetch_endpoint": fetcher.endpoint,
         "scope": scope_json(scope),
         "queries": {kind: query for kind, query in scope.queries().items() if kind in kinds},
         "limit": limit,
         "counts": counts,
-        "requests": client.requests,
+        "failed": failed,
+        "requests": requests,
         "seconds": round(time.monotonic() - started, 1),
         "library": f"tetrak-authority {_version()}",
         "fold": translit,
@@ -385,6 +442,7 @@ __all__ = [
     "enumerate_ids",
     "facts_query",
     "fetch",
+    "fetch_resilient",
     "names_query",
     "point",
     "year",

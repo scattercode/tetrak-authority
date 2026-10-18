@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from conftest import TRIAL, Replay
@@ -15,8 +16,10 @@ from tetrak_authority.snapshot import (
     count,
     facts_query,
     fetch,
+    fetch_resilient,
     names_query,
 )
+from tetrak_authority.wikidata import RequestFailed
 
 
 class TestScope:
@@ -154,3 +157,77 @@ class TestOverRecordings:
         manifest = build(client, tmp_path / "places", ARMENIAN, kinds=("place",), limit=2)
         assert manifest["counts"] == {"place": 2} and list(manifest["queries"]) == ["place"]
         assert client.requests == 3
+
+
+class TestResilience:
+    def test_a_refused_batch_is_halved_and_a_refused_item_skipped(self) -> None:
+        """Three ids as one batch: refused; then halves; the pair refused again; singles answered or skipped."""
+        refused: list[int] = []
+
+        def transport(url: str, headers: dict[str, str]) -> bytes:
+            ids = re.findall(r"wd%3A(Q\d+)", url)
+            if len(ids) > 1:
+                refused.append(len(ids))
+                raise RequestFailed("Tried to allocate 1.4 GB")
+            if ids == ["Q2"]:
+                raise RequestFailed("no")
+            if "rdfs%3Alabel" in url:
+                rows = [
+                    {
+                        "item": {
+                            "type": "uri",
+                            "value": f"http://www.wikidata.org/entity/{ids[0]}",
+                        },
+                        "name": {"type": "literal", "value": f"Name {ids[0]}", "xml:lang": "en"},
+                        "kind": {"type": "literal", "value": "label"},
+                    }
+                ]
+            else:
+                rows = []
+            return json.dumps({"head": {"vars": []}, "results": {"bindings": rows}}).encode()
+
+        fallible = Client("http://endpoint", pause=0.0, transport=transport)
+        failed: list[str] = []
+        lines: list[str] = []
+        got = fetch_resilient(
+            fallible, ["Q1", "Q2", "Q3"], "person", failed=failed, log=lines.append
+        )
+        assert [e.id for e in got] == ["Q1", "Q3"]
+        assert got[0].label == "Name Q1"
+        assert failed == ["Q2"]
+        assert refused == [3, 2]
+        assert any("refused" in line for line in lines) and any(
+            "Q2 skipped" in line for line in lines
+        )
+
+    def test_a_build_resumes_what_it_already_wrote(self, client: Client, tmp_path: Path) -> None:
+        first = build(client, tmp_path / "s", ARMENIAN, kinds=("place",), limit=2)
+        assert first["counts"] == {"place": 2} and first["failed"] == []
+        again = Client(client.endpoint, pause=0.0, transport=client._transport)
+        lines: list[str] = []
+        second = build(
+            again,
+            tmp_path / "s",
+            ARMENIAN,
+            kinds=("place",),
+            limit=2,
+            resume=True,
+            log=lines.append,
+        )
+        assert second["counts"] == {"place": 2}
+        assert again.requests == 1  # the enumeration only; nothing left to fetch
+        assert (
+            lines[0] == "resuming: 2 entities already written"
+            and "place: 0 items to fetch" in lines
+        )
+        assert (
+            len((tmp_path / "s" / "entities.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+        )
+
+    def test_a_separate_fetch_client_is_counted(self, client: Client, tmp_path: Path) -> None:
+        fetcher = Client(client.endpoint, pause=0.0, transport=client._transport)
+        manifest = build(
+            client, tmp_path / "s", ARMENIAN, kinds=("place",), limit=2, fetch_client=fetcher
+        )
+        assert manifest["fetch_endpoint"] == manifest["endpoint"] == client.endpoint
+        assert client.requests == 1 and fetcher.requests == 2 and manifest["requests"] == 3

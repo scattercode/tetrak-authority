@@ -16,7 +16,7 @@ from tetrak_authority.wikidata import Client, RequestFailed
 def replayed(monkeypatch: pytest.MonkeyPatch, replay: Replay) -> Replay:
     """Make every client the command builds answer from the recordings."""
 
-    def client_of(args: object) -> Client:
+    def client_of(args: object, endpoint: str | None = None) -> Client:
         return Client(
             cli.QLEVER, user_agent="tetrak-authority/0 (test)", pause=0.0, transport=replay
         )

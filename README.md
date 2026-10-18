@@ -45,7 +45,7 @@ and the counts, so that a measurement can cite exactly what it used:
 
 ```bash
 tetrak-authority count                          # how big the scope is, per kind
-tetrak-authority snapshot --out snapshots/hy    # build it: about an hour of polite requests
+tetrak-authority snapshot --out snapshots/hy    # build it: a few hours of polite requests
 ```
 
 The default scope is Armenian: people with a label or alias in Armenian
@@ -108,7 +108,9 @@ and counts its requests into the manifest. Enumeration runs against the
 [QLever mirror][qlever] of Wikidata by default, because the Query Service
 cannot filter the whole of Wikidata by label language within its
 60-second limit; the mirror is a copy a little behind live, which the
-manifest records. The fetch of names and facts works against either.
+manifest records. The fetch of names and facts runs against the Query
+Service, which answers a batch of ids several times faster than the
+mirror. A refused batch is halved and retried, and a stopped run resumes.
 
 ## Documentation
 

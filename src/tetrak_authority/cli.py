@@ -51,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
             help="a URL or email for the user agent, as Wikimedia's policy asks",
         )
         sub.add_argument(
+            "--fetch-endpoint",
+            default=WDQS,
+            help=f"SPARQL endpoint that fetches names and facts by batch of ids (default the Query Service, {WDQS}, which is faster at that than the mirror)",
+        )
+        sub.add_argument(
             "--pause", type=float, default=1.0, help="seconds between requests (default 1)"
         )
         sub.add_argument(
@@ -94,9 +99,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--out", type=Path, required=True, help="directory for snapshot.json and entities.jsonl"
     )
     snapshot.add_argument(
-        "--batch", type=int, default=300, help="items per fetch query (default 300)"
+        "--batch", type=int, default=200, help="items per fetch query (default 200)"
     )
     snapshot.add_argument("--limit", type=int, default=None, help="items per kind, for a trial run")
+    snapshot.add_argument(
+        "--resume",
+        action="store_true",
+        help="keep the entities already in the output and fetch only the rest",
+    )
 
     lookup = commands.add_parser(
         "lookup", help="the entities a name reaches in a snapshot, and their names"
@@ -146,11 +156,11 @@ def scope_of(args: argparse.Namespace) -> Scope:
     return Scope(script=args.script, languages=tuple(args.languages), box=box)
 
 
-def client_of(args: argparse.Namespace) -> Client:
-    """A client with the user agent the arguments ask for."""
+def client_of(args: argparse.Namespace, endpoint: str | None = None) -> Client:
+    """A client with the user agent the arguments ask for, on the enumeration endpoint or the one given."""
     contact = args.contact or "https://github.com/scattercode/tetrak-authority"
     return Client(
-        endpoint=getattr(args, "endpoint", QLEVER),
+        endpoint=endpoint if endpoint is not None else str(getattr(args, "endpoint", QLEVER)),
         user_agent=user_agent(__version__, contact),
         pause=getattr(args, "pause", 1.0),
     )
@@ -175,6 +185,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 batch=args.batch,
                 limit=args.limit,
                 log=lambda line: print(line, file=sys.stderr),
+                fetch_client=client_of(args, args.fetch_endpoint),
+                resume=args.resume,
             )
             print(json.dumps(manifest, indent=2, ensure_ascii=False))
             return 0
