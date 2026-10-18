@@ -13,10 +13,13 @@ authority.get("Q380797")  # one Entity, or None
 
 `load` takes a snapshot directory (`snapshot.json` beside
 `entities.jsonl`) or a `.jsonl` file alone. The script that keys the
-names is read from the manifest and defaults to Armenian. The keys were
-computed when the snapshot was built, so loading parses JSON and folds
-nothing; the index for partial matches is built on the first lookup
-that needs it.
+names is read from the manifest and defaults to Armenian. Loading opens
+the SQLite index beside the entities file (`authority.sqlite`, built by
+`snapshot` and `rekey`), so it costs nothing and a lookup reads only the
+rows it matches; a snapshot without an index, or whose entities file is
+newer than it, is indexed first, once, which takes a few minutes for a
+full snapshot. `Authority.from_entities(records)` indexes records in
+memory.
 
 ## Looking a name up
 

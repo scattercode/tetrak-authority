@@ -78,7 +78,8 @@ the standard library's.
 | `src/tetrak_authority/model.py` | `Entity`, `Name`, `key_of`: the record and its keys |
 | `src/tetrak_authority/wikidata.py` | The polite client: SPARQL `select`, API `search`, pacing, retries |
 | `src/tetrak_authority/snapshot.py` | `Scope`, `Box`, the enumeration and fetch queries, `build`, `count` |
-| `src/tetrak_authority/authority.py` | `Authority.load`, `match`, `names_for`: offline lookups |
+| `src/tetrak_authority/index.py` | The SQLite index beside a snapshot: records, keys, words |
+| `src/tetrak_authority/authority.py` | `Authority.load`, `match`, `names_for`: offline lookups through the index |
 | `src/tetrak_authority/cli.py` | `tetrak-authority`, argparse |
 | `tests/` | pytest over recorded responses; `tests/record.py` refreshes them |
 | `docs/` | Sphinx (furo, MyST), published to GitHub Pages at each release |

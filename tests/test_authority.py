@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import sqlite3
 from pathlib import Path
 
+import pytest
 from conftest import SNAPSHOT
 
 from tetrak_authority import Authority, Entity, Name
@@ -21,6 +25,49 @@ class TestLoading:
     def test_a_jsonl_file_loads_alone(self) -> None:
         authority = Authority.load(SNAPSHOT / "entities.jsonl")
         assert len(authority) == 6 and authority.manifest == {}
+
+    def test_the_index_is_built_once_and_reopened_read_only(self, tmp_path: Path) -> None:
+        shutil.copytree(SNAPSHOT, tmp_path / "s", ignore=shutil.ignore_patterns("*.sqlite"))
+        index = tmp_path / "s" / "authority.sqlite"
+        assert not index.exists()
+        first = Authority.load(tmp_path / "s")
+        assert index.exists() and len(first) == 6
+        stamp = index.stat().st_mtime
+        second = Authority.load(tmp_path / "s")
+        assert index.stat().st_mtime == stamp and len(second) == 6
+        with pytest.raises(sqlite3.OperationalError):
+            second._db.execute("DELETE FROM entity")
+        # An entities file newer than the index means a rebuild.
+        inode = index.stat().st_ino
+        os.utime(tmp_path / "s" / "entities.jsonl", (stamp + 10, stamp + 10))
+        Authority.load(tmp_path / "s")
+        assert index.stat().st_ino != inode and index.stat().st_mtime > stamp
+
+    def test_a_directory_that_cannot_be_written_indexes_in_memory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        shutil.copytree(SNAPSHOT, tmp_path / "s", ignore=shutil.ignore_patterns("*.sqlite"))
+        real = sqlite3.connect
+
+        def refuse(target: str, *args: object, **kwargs: object) -> sqlite3.Connection:
+            if target.endswith("authority.sqlite"):
+                raise sqlite3.OperationalError("unable to open database file")
+            return real(target, *args, **kwargs)
+
+        monkeypatch.setattr("tetrak_authority.index.sqlite3.connect", refuse)
+        authority = Authority.load(tmp_path / "s")
+        assert len(authority) == 6 and not (tmp_path / "s" / "authority.sqlite").exists()
+
+    def test_from_entities(self) -> None:
+        authority = Authority.from_entities(
+            [Entity.build("Q1", "place", [Name("Tiflis", "en", "label")])]
+        )
+        assert [m.entity.id for m in authority.match("Թիֆլիս")] == ["Q1"]
+        assert [e.id for e in authority] == ["Q1"]
+
+    def test_a_missing_snapshot_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            Authority.load(tmp_path / "none")
 
     def test_a_snapshot_written_before_keys_were_stored_still_matches(self, tmp_path: Path) -> None:
         old = Entity.build("Q1", "person", [Name("Hovhannes Tumanyan", "en", "label")]).to_json()

@@ -10,7 +10,13 @@ A snapshot is a directory of two files:
   each name as `[text, language, kind, key]`, with the fold key computed
   when the snapshot is built, so that loading it folds nothing. The
   manifest's `format` is 2 for that; a format-1 snapshot, written before
-  keys were stored, still loads, slowly, and `rekey` brings it up.
+  keys were stored, still loads, and `rekey` brings it up.
+- `authority.sqlite`, the index lookups go through: every record, every
+  name's key and every word of every key, in the standard library's
+  SQLite. Derived from `entities.jsonl` by `snapshot` and `rekey`, and
+  rebuilt by a load that finds it missing or older than the entities
+  file. The entities file is the data to keep and to diff; the index is
+  a cache.
 
 The manifest is what a measurement cites. The same queries on another
 day give another snapshot, because Wikidata changes daily and the mirror

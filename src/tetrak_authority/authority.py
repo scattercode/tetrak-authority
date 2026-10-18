@@ -1,20 +1,24 @@
 """Look names up in a snapshot, by fold key, offline.
 
-:class:`Authority` loads a snapshot and indexes every entity by the fold
-keys of its names. A lookup folds what it is given the same way, so
-*Tumanyan, Hovhannes*, *Թումանեան Յովհաննէս* and *Toumanian Hovannes*
-all reach the same record. Nothing here touches the network.
+:class:`Authority` opens a snapshot's SQLite index (see
+:mod:`tetrak_authority.index`) and matches a name on the fold keys of
+every name in it. A lookup folds what it is given the same way, so
+*Tumanyan, Hovhannes*, *Թումանեան Յովհաննէս* and *Toumanian Hovannes* all
+reach the same record. Nothing here touches the network, and nothing is
+read until a lookup asks for it.
 """
 
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .model import NAME_KINDS, PREFERRED_LANGUAGES, Entity, Name, key_of
+from .index import INDEX_FILE, build_index, read_entities
+from .model import Entity, Name, key_of
 
 
 @dataclass(frozen=True)
@@ -36,50 +40,37 @@ class Match:
 
 
 class Authority:
-    """A snapshot loaded for lookups.
+    """A snapshot open for lookups.
 
     Args:
-        entities: The records.
+        connection: The snapshot's index, open.
         script: The tetrak-translit script that keys the names; must be
             the one the snapshot was built with.
         manifest: The snapshot's ``snapshot.json``, if there is one.
+
+    Build one with :meth:`load` for a snapshot on disk, or
+    :meth:`from_entities` for records in memory.
     """
 
     def __init__(
-        self, entities: Iterable[Entity], script: str = "hy", manifest: dict[str, Any] | None = None
+        self,
+        connection: sqlite3.Connection,
+        script: str = "hy",
+        manifest: dict[str, Any] | None = None,
     ) -> None:
+        self._db = connection
         self.script = script
         self.manifest = manifest or {}
-        self._entities: dict[str, Entity] = {}
-        self._by_key: dict[str, list[tuple[Entity, Name]]] = {}
-        self._words: dict[str, set[str]] | None = None
-        for entity in entities:
-            self._entities[entity.id] = entity
-            # Index the preferred languages' names first, so that a match
-            # reports the form a cataloguer recognises rather than the first
-            # language alphabetically. Keys were computed when the snapshot
-            # was built; a name from before keys were stored is folded here.
-            for name in sorted(entity.names, key=_preference):
-                if not name.key and name.kind in NAME_KINDS:
-                    name = name.keyed(script)
-                if name.key:
-                    self._by_key.setdefault(name.key, []).append((entity, name))
-
-    @property
-    def _by_word(self) -> dict[str, set[str]]:
-        """Word to entity ids, for partial matches; built on first use."""
-        if self._words is None:
-            self._words = {}
-            for key, matches in self._by_key.items():
-                for word in key.split():
-                    ids = self._words.setdefault(word, set())
-                    for entity, _ in matches:
-                        ids.add(entity.id)
-        return self._words
 
     @classmethod
     def load(cls, path: Path | str) -> Authority:
-        """Load a snapshot directory (``snapshot.json`` beside ``entities.jsonl``) or a ``.jsonl`` file."""
+        """Open a snapshot directory (``snapshot.json`` beside ``entities.jsonl``) or a ``.jsonl`` file alone.
+
+        The index beside the entities file is opened when it is there and
+        at least as new as the file, and built there otherwise, which
+        takes a few minutes for a full snapshot and happens once. If the
+        directory cannot be written to, the index is built in memory.
+        """
         path = Path(path)
         manifest: dict[str, Any] = {}
         if path.is_dir():
@@ -87,27 +78,39 @@ class Authority:
             if manifest_file.exists():
                 manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
             path = path / "entities.jsonl"
+        if not path.exists():
+            raise FileNotFoundError(str(path))
         script = str(manifest.get("scope", {}).get("script", "hy"))
-        with path.open(encoding="utf-8") as lines:
-            entities = [Entity.from_json(json.loads(line)) for line in lines if line.strip()]
-        return cls(entities, script=script, manifest=manifest)
+        index = path.parent / INDEX_FILE
+        if index.exists() and index.stat().st_mtime >= path.stat().st_mtime:
+            return cls(sqlite3.connect(f"file:{index}?mode=ro", uri=True), script, manifest)
+        try:
+            connection = build_index(read_entities(path), index, script)
+        except sqlite3.OperationalError:
+            connection = build_index(read_entities(path), ":memory:", script)
+        return cls(connection, script, manifest)
+
+    @classmethod
+    def from_entities(cls, entities: Iterable[Entity], script: str = "hy") -> Authority:
+        """An authority over records in memory, indexed there."""
+        return cls(build_index(entities, ":memory:", script), script)
 
     def __len__(self) -> int:
-        return len(self._entities)
+        row = self._db.execute("SELECT COUNT(*) FROM entity").fetchone()
+        return int(row[0])
 
     def __iter__(self) -> Iterator[Entity]:
-        return iter(self._entities.values())
+        for (record,) in self._db.execute("SELECT record FROM entity ORDER BY rowid"):
+            yield Entity.from_json(json.loads(record))
 
     def get(self, id: str) -> Entity | None:
         """The record with this Wikidata id, or ``None``."""
-        return self._entities.get(id)
+        row = self._db.execute("SELECT record FROM entity WHERE id = ?", (id,)).fetchone()
+        return Entity.from_json(json.loads(row[0])) if row else None
 
     def by_key(self, key: str) -> list[Entity]:
         """The entities one of whose names folds to exactly this key."""
-        seen: dict[str, Entity] = {}
-        for entity, _ in self._by_key.get(key, ()):
-            seen.setdefault(entity.id, entity)
-        return list(seen.values())
+        return [entity for entity, _ in self._exact(key, None)]
 
     def match(self, text: str, kinds: Iterable[str] | None = None) -> list[Match]:
         """The entities a name reaches, exact matches first.
@@ -122,25 +125,19 @@ class Authority:
             text: The name as a catalogue or a reader wrote it.
             kinds: Restrict to ``person``, ``organisation`` or ``place``.
         """
-        wanted = set(kinds) if kinds is not None else None
+        wanted = tuple(kinds) if kinds is not None else None
         key = key_of(text, self.script)
         if not key:
             return []
-        matches: list[Match] = []
-        seen: set[str] = set()
-        for entity, name in self._by_key.get(key, ()):
-            if entity.id not in seen and (wanted is None or entity.kind in wanted):
-                seen.add(entity.id)
-                matches.append(Match(entity, name, exact=True))
+        matches = [Match(entity, name, exact=True) for entity, name in self._exact(key, wanted)]
+        seen = {match.entity.id for match in matches}
         words = key.split()
         if len(words) >= 2:
-            candidates: set[str] | None = None
-            for word in words:
-                ids = self._by_word.get(word, set())
-                candidates = ids if candidates is None else candidates & ids
-            for id in sorted(candidates or (), key=_item_order):
-                entity = self._entities[id]
-                if id in seen or (wanted is not None and entity.kind not in wanted):
+            for id in self._with_all_words(words, wanted):
+                if id in seen:
+                    continue
+                entity = self.get(id)
+                if entity is None:  # pragma: no cover - the index and the records agree
                     continue
                 for name in entity.names:
                     name_words = set((name.key or key_of(name.text, self.script)).split())
@@ -162,18 +159,35 @@ class Authority:
                 names.setdefault(name.text, None)
         return list(names)
 
+    def _exact(self, key: str, kinds: tuple[str, ...] | None) -> list[tuple[Entity, Name]]:
+        """Entities with a name of this key, each once, with the best-ranked such name."""
+        query = (
+            "SELECT e.id, e.record, n.pos FROM name n JOIN entity e ON e.id = n.entity"
+            " WHERE n.key = ?"
+        )
+        params: list[Any] = [key]
+        if kinds is not None:
+            query += f" AND e.kind IN ({','.join('?' * len(kinds))})"
+            params.extend(kinds)
+        query += " ORDER BY n.rank, n.pos"
+        found: dict[str, tuple[Entity, Name]] = {}
+        for id, record, pos in self._db.execute(query, params):
+            if id not in found:
+                entity = Entity.from_json(json.loads(record))
+                found[id] = (entity, entity.names[pos])
+        return sorted(found.values(), key=lambda pair: _item_order(pair[0].id))
 
-def _preference(name: Name) -> tuple[int, int, str]:
-    rank = (
-        PREFERRED_LANGUAGES.index(name.language)
-        if name.language in PREFERRED_LANGUAGES
-        else len(PREFERRED_LANGUAGES)
-    )
-    return (
-        rank,
-        NAME_KINDS.index(name.kind) if name.kind in NAME_KINDS else len(NAME_KINDS),
-        name.language,
-    )
+    def _with_all_words(self, words: list[str], kinds: tuple[str, ...] | None) -> list[str]:
+        """Ids of entities one of whose keys holds every one of these words."""
+        query = " INTERSECT ".join("SELECT entity FROM word WHERE word = ?" for _ in words)
+        params: list[Any] = list(words)
+        if kinds is not None:
+            query = (
+                f"SELECT id FROM entity WHERE id IN ({query})"
+                f" AND kind IN ({','.join('?' * len(kinds))})"
+            )
+            params.extend(kinds)
+        return sorted((row[0] for row in self._db.execute(query, params)), key=_item_order)
 
 
 def _item_order(id: str) -> tuple[int, str]:

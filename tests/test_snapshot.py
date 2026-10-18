@@ -138,6 +138,8 @@ class TestOverRecordings:
         assert set(manifest["queries"]) == {"person", "organisation", "place"}
         assert manifest["requests"] == client.requests == 9
         assert manifest["fold"].startswith("tetrak-translit ")
+        assert manifest["index"] == "authority.sqlite"
+        assert (tmp_path / "trial" / "authority.sqlite").exists()
         assert manifest["date"] and manifest["seconds"] >= 0
         written = json.loads((tmp_path / "trial" / "snapshot.json").read_text(encoding="utf-8"))
         assert written["counts"] == manifest["counts"]
@@ -162,9 +164,9 @@ class TestOverRecordings:
             for url in replay.urls
             if "COUNT" not in url and "VALUES+%3Fitem" not in url
         )
-        assert lines[0] == "person: 2 items to fetch" and lines[-1].startswith(
-            "place: batch 1, 2 written"
-        )
+        assert lines[0] == "person: 2 items to fetch"
+        assert any(line.startswith("place: batch 1, 2 written") for line in lines)
+        assert lines[-1] == "6 entities indexed"
 
     def test_build_can_leave_kinds_out(self, client: Client, tmp_path: Path) -> None:
         manifest = build(client, tmp_path / "places", ARMENIAN, kinds=("place",), limit=2)

@@ -39,6 +39,7 @@ from typing import Any
 
 import tetrak_translit
 
+from .index import INDEX_FILE, build_index, read_entities
 from .model import KINDS, Entity, Name
 from .wikidata import Client, RequestFailed, Row
 
@@ -396,6 +397,8 @@ def build(
                     f"{kind}: batch {number}, {counts[kind]} written, {client.requests + (fetcher.requests if fetcher is not client else 0)} requests"
                 )
     requests = client.requests + (fetcher.requests if fetcher is not client else 0)
+    say("indexing")
+    build_index(read_entities(lines_file), out / INDEX_FILE, scope.script, say).close()
     manifest = {
         "format": FORMAT,
         "date": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d"),
@@ -410,6 +413,7 @@ def build(
         "seconds": round(time.monotonic() - started, 1),
         "library": f"tetrak-authority {_version()}",
         "fold": translit,
+        "index": INDEX_FILE,
     }
     (out / "snapshot.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -424,8 +428,9 @@ def rekey(
 
     For a snapshot written before keys were stored, and after a release
     of tetrak-translit that moves keys, when nothing else has changed and
-    a refetch would be waste. Rewrites ``entities.jsonl`` and updates the
-    manifest's ``fold`` and ``format``; returns the manifest.
+    a refetch would be waste. Rewrites ``entities.jsonl``, rebuilds the
+    index, and updates the manifest's ``fold`` and ``format``; returns the
+    manifest.
     """
     say = log or (lambda line: None)
     manifest_file = path / "snapshot.json"
@@ -444,6 +449,8 @@ def rekey(
                 if count % 10000 == 0:
                     say(f"{count} entities re-keyed")
     target.replace(source)
+    build_index(read_entities(source), path / INDEX_FILE, script, say).close()
+    manifest["index"] = INDEX_FILE
     manifest["format"] = FORMAT
     manifest["fold"] = f"tetrak-translit {tetrak_translit.__version__}"
     manifest["rekeyed"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")

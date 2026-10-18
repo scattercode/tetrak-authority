@@ -60,8 +60,9 @@ on 18 October 2026: about 136,000 people, 7,800 organisations and 22,000
 places. Every part of that is an argument: `--languages`, `--box`,
 `--kinds`, or a `Scope` of your own in Python.
 
-**Look names up, offline.** The snapshot is loaded once and matched on
-fold keys, so an inverted catalogue form, a classical spelling and a
+**Look names up, offline.** A snapshot carries an SQLite index of every
+name's fold key, so opening it costs nothing and a lookup reads only the
+rows it matches: an inverted catalogue form, a classical spelling and a
 diaspora romanisation all reach the same record, and nothing touches the
 network at index time, in CI or in a discovery layer:
 

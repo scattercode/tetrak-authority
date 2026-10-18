@@ -24,3 +24,6 @@ docs/generated/
 
 # Snapshots built locally are data, not source; a committed snapshot lives under data/ on purpose.
 /snapshots/
+
+# The SQLite index a snapshot is looked up through: derived from entities.jsonl, rebuilt when missing.
+authority.sqlite
