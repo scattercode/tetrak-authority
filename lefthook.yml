@@ -1,0 +1,33 @@
+# Lefthook — git hooks manager. Install with: lefthook install
+# (requires the lefthook binary, e.g. `brew install lefthook`).
+#
+# Without lefthook, `git config core.hooksPath .githooks` still activates
+# the Conventional Commits check on its own.
+
+pre-commit:
+  parallel: true
+  commands:
+    ruff-lint:
+      glob: "*.py"
+      run: ruff check {staged_files}
+    ruff-format:
+      glob: "*.py"
+      run: ruff format --check {staged_files}
+    # Dependency changes must land with a regenerated lockfile — CI rejects
+    # a stale one. Regenerate with `uv lock`.
+    uv-lock:
+      glob: "{pyproject.toml,uv.lock}"
+      run: uv lock --check
+
+pre-push:
+  commands:
+    tests:
+      # The project's own interpreter, not whichever `pytest` is on PATH.
+      run: if [ -x .venv/bin/python ]; then .venv/bin/python -m pytest; else pytest; fi
+    types:
+      run: if [ -x .venv/bin/python ]; then .venv/bin/python -m mypy; else mypy; fi
+
+commit-msg:
+  commands:
+    conventional:
+      run: .githooks/commit-msg {1}

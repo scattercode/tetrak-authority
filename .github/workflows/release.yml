@@ -1,0 +1,269 @@
+# Automated release — the workspace pattern, ported from Tetrak.
+#
+# On every push/merge to main, the shared next-version action computes the next
+# semantic version from the Conventional Commit history since the last tag,
+# git-cliff prepends that version's section to CHANGELOG.md, the commit is
+# tagged, and a GitHub Release is published whose notes are that section.
+# The wheel is then built from the tag, published to PyPI with a Trusted
+# Publisher, and the documentation for that tag is deployed last -- so the
+# published reference can never run ahead of what is on PyPI.
+#
+# The release commit is pushed by the `scattercode-release` App, the only
+# actor the main ruleset lets bypass it. That token is a real identity, so
+# unlike GITHUB_TOKEN its pushes *do* trigger workflows -- the `chore(release):`
+# guard on the job below is what stops this looping, not the token. If there
+# are no releasable commits since the last tag, the job is a no-op.
+#
+# A re-run by hand, for a tag whose build, publish or docs job failed after
+# the tag and GitHub Release already existed (0.2.0 was tagged and then its
+# wheel smoke test failed, leaving the version on GitHub but not on PyPI):
+#
+#   gh workflow run release.yml --ref main -f tag=0.2.0
+#
+# The release job is skipped and the rest runs for that tag. Re-running the
+# failed run itself would not help: a run uses the workflow file from the
+# commit that triggered it, so a fix to the workflow never reaches it.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing release tag to build, publish and document (for example 0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Belt and braces: never react to our own release commit. A dispatch
+    # names a tag that already exists, so there is nothing to compute.
+    if: ${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.version.outputs.release }}
+      version: ${{ steps.version.outputs.next }}
+    steps:
+      # A token for the `scattercode-release` GitHub App, which is the only
+      # actor allowed to bypass main's ruleset. GITHUB_TOKEN cannot be given
+      # that permission -- GitHub Actions is not an installable app, so it has
+      # no identity a ruleset can name. The App holds Contents: write and
+      # nothing else, so the worst it can do is commit and tag.
+      - name: Mint a release token
+        id: app_token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # The committer line needs the App's bot *user* id, which is not any of
+      # the ids the token action returns -- `installation-id` is a different
+      # number, and a commit carrying it is attributed to nobody.
+      - name: Identify the App's bot user
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          SLUG: ${{ steps.app_token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          echo "id=$(gh api "/users/${SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          # Persisted so the push below goes out as the App rather than as
+          # GITHUB_TOKEN, which the ruleset would refuse.
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      # Shared with every other repository whose releases are automated.
+      # Deliberately not `git cliff --bumped-version`: that buckets the whole
+      # history into releases first and goes wrong on merge topology. The
+      # action reads one commit range instead. Pinned to the major tag.
+      - name: Compute next version
+        id: version
+        uses: scattercode/release-pipelines/actions/next-version@v1
+
+      - name: Guard against a silently skipped release
+        if: steps.version.outputs.release != 'true'
+        run: |
+          latest="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
+          echo "No releasable change since ${latest:-repo start}."
+          # A merge to main carrying a feat or fix must produce a release. If
+          # one does not, that is the failure this job exists to catch.
+          if git log --no-merges --format='%s' "${latest:+$latest..}HEAD" \
+               | grep -qE '^(feat|fix|perf|revert)(\([^)]*\))?!?:'; then
+            echo "::error::Releasable commits are present but no version was computed."
+            exit 1
+          fi
+
+      - name: Update changelog, tag and release
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.next }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # The very first release predates the changelog: git-cliff's
+          # --prepend errors on a missing file but handles an empty one
+          # correctly (header, then the new section).
+          touch CHANGELOG.md
+
+          # --prepend, not --output: regenerating the whole changelog re-runs
+          # git-cliff's release bucketing over the entire history, which is
+          # exactly what is unreliable on merge topology.
+          git cliff --tag "$VERSION" --unreleased --prepend CHANGELOG.md
+          git cliff --tag "$VERSION" --unreleased --strip all --output RELEASE_NOTES.md
+
+          git config user.name  "${{ steps.app_token.outputs.app-slug }}[bot]"
+          git config user.email "${{ steps.bot.outputs.id }}+${{ steps.app_token.outputs.app-slug }}[bot]@users.noreply.github.com"
+
+          git add CHANGELOG.md
+          git commit -m "chore(release): ${VERSION#v}"
+          git tag -a "$VERSION" -m "$VERSION"
+
+          # One atomic push, so the branch and the tag land together. Two
+          # pushes leave a window where main carries the commit and the tag
+          # does not exist yet, and anything triggered in that window sees an
+          # untagged main and builds a dev version.
+          #
+          # A pull request merged into main while this job is running makes
+          # this push non-fast-forward and the job fails here. Because the
+          # push is atomic and nothing after it has run, a lost race leaves no
+          # tag, no release and no changelog commit, so re-running the job is
+          # a clean redo.
+          git push --atomic origin "HEAD:${{ github.ref_name }}" "$VERSION"
+
+          gh release create "$VERSION" --title "$VERSION" --notes-file RELEASE_NOTES.md
+
+  # One place that says which tag, if any, the rest of the workflow ships:
+  # the tag the release job just pushed, or the one a dispatch named. Runs
+  # whether or not the release job did, which is why it has `always()`;
+  # a skipped release job has empty outputs and a push with nothing to
+  # release ends here.
+  tag:
+    needs: release
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.pick.outputs.released }}
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - id: pick
+        env:
+          DISPATCHED_TAG: ${{ inputs.tag }}
+          RELEASED: ${{ needs.release.outputs.released }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          if [ -n "$DISPATCHED_TAG" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "version=$DISPATCHED_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=${RELEASED:-false}" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Build the sdist and wheel from the exact tag. A fresh checkout at the
+  # tag is what makes hatch-vcs produce a clean X.Y.Z; a build from an
+  # untagged commit yields X.Y.Z+gabcdef, which PyPI rejects.
+  # `!cancelled()` on this and the next two gates, not a bare output check:
+  # a job whose `if` names no status function gets an implicit success(),
+  # and success() is false when any job earlier in the needs chain was
+  # skipped -- which the release job is on every dispatch. Without it the
+  # first dispatch for 0.2.0 ran the tag job, set released=true, and then
+  # skipped everything downstream. Each gate also checks the result of
+  # the job it actually depends on, so a failure still stops the chain.
+  build:
+    needs: tag
+    if: ${{ !cancelled() && needs.tag.outputs.released == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.tag.outputs.version }}
+          fetch-depth: 0
+
+      # A dispatched tag could be a branch name or a typo, and
+      # actions/checkout would check either out without complaint.
+      - name: Check the ref is a tag
+        run: git describe --exact-match --tags HEAD
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+
+      # Fails on a README that will not render on PyPI, or missing metadata.
+      - name: Check distribution metadata
+        run: twine check --strict dist/*
+
+      # Install the *wheel* into a clean interpreter and run it. This catches
+      # files that work from `pip install -e .` but were left out of the wheel.
+      - name: Smoke-test the wheel
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          /tmp/smoke/bin/python -c "import os, tetrak_authority as t; v = os.environ['VERSION'].removeprefix('v'); assert t.__version__ == v, (t.__version__, v); print(t.__version__)"
+          # One call per script, each exercising the installed CLI end to end.
+          # Latin input names its script: 0.2.0's smoke test did not, and the
+          # exit status 2 that fold() rightly returns failed the release.
+          /tmp/smoke/bin/tetrak-authority lookup --snapshot tests/data/snapshot "Tumanyan, Hovhannes"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  # Upload with a Trusted Publisher. No token is stored anywhere: the job
+  # proves its identity to PyPI with a short-lived OIDC token, which is why
+  # id-token: write is the only permission it needs. Attestations (PEP 740)
+  # are generated and uploaded by the action automatically.
+  publish:
+    needs: [tag, build]
+    if: ${{ !cancelled() && needs.tag.outputs.released == 'true' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: pypi          # must match the name registered on PyPI
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # The reference for the released tag, deployed only once the wheel is on
+  # PyPI, so the published documentation always describes an installable
+  # version. The called workflow runs under refs/heads/main -- the only ref
+  # the github-pages environment admits -- while building from the tag.
+  docs:
+    needs: [tag, publish]
+    if: ${{ !cancelled() && needs.tag.outputs.released == 'true' && needs.publish.result == 'success' }}
+    uses: ./.github/workflows/sphinx-docs.yml
+    with:
+      tag: ${{ needs.tag.outputs.version }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

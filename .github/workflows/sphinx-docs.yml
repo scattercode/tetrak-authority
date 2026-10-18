@@ -1,0 +1,98 @@
+name: Sphinx docs
+
+# Build on every push and pull request; deploy only when Release (or a
+# hand-run dispatch) names a tag. Ported from Tetrak, where deploying from
+# every push to main published whatever dev version hatch-vcs derived from
+# the commit, and deploying on the tag push could run before the wheel was
+# on PyPI. Here the deploy is a job Release calls after the publish job
+# succeeds, so the reference cannot run ahead of the package.
+#
+# A redeploy by hand, for a release whose docs job was skipped or failed:
+#
+#   gh workflow run sphinx-docs.yml --ref main -f tag=0.2.0
+
+on:
+  push:
+    branches: [main]
+  # No path filter: these are required checks, and a workflow filtered out
+  # by path never starts, so never reports, and leaves the pull request
+  # blocked.
+  pull_request:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag to build and deploy
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to build and deploy (for example 0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Deploying runs keep the serialised `pages` group with no cancellation, so
+# a deploy is never killed mid-flight. Pull-request builds deploy nothing
+# and get a per-ref group with cancellation.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('sphinx-pr-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  api-docs-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The tag when deploying; empty on push and pull_request, which
+          # actions/checkout reads as "the commit that triggered the run".
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install the package and Sphinx toolchain
+        run: pip install -e '.[apidocs]'
+
+      # The input could be a branch name or a typo, and actions/checkout
+      # would check either out without complaint. The build has to report
+      # exactly the version asked for, or the deploy is refused.
+      - name: Check the build reports the tag it was asked for
+        if: inputs.tag != ''
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          git describe --exact-match --tags HEAD
+          python -c "import os, tetrak_authority as t; v = os.environ['TAG'].removeprefix('v'); assert t.__version__ == v, (t.__version__, v); print('building', t.__version__)"
+
+      - name: Build
+        run: sphinx-build -W -b html docs docs/_build/html
+
+      - uses: actions/configure-pages@v6
+        if: inputs.tag != ''
+
+      - uses: actions/upload-pages-artifact@v5
+        if: inputs.tag != ''
+        with:
+          path: docs/_build/html
+
+  deploy:
+    needs: api-docs-build
+    if: inputs.tag != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

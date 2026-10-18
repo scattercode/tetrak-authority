@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "tetrak-authority: variant names and identifiers from a dated Wikidata snapshot, for catalogue search across scripts"
+type: software
+authors:
+  - family-names: Masters
+    given-names: Stephen
+  - family-names: Mankerian
+    given-names: Yvette
+repository-code: "https://github.com/scattercode/tetrak-authority"
+url: "https://scattercode.github.io/tetrak-authority/"
+license: MIT
+keywords:
+  - Armenian
+  - name authority
+  - variant names
+  - Wikidata
+  - cross-script search

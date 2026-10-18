@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Written at build time by hatch-vcs; the version lives in the git tag.
+src/tetrak_authority/_version.py
+
+# Sphinx output and the autosummary stubs it generates.
+docs/_build/
+docs/generated/
+
+# OS
+.DS_Store
+
+# Snapshots built locally are data, not source; a committed snapshot lives under data/ on purpose.
+/snapshots/
