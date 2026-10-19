@@ -1,0 +1,116 @@
+[build-system]
+requires = ["hatchling>=1.27", "hatch-vcs"]   # 1.27+ understands PEP 639
+build-backend = "hatchling.build"
+
+[project]
+name = "tetrak-authority"
+# Derived from the git tag via hatch-vcs, the workspace pattern (see
+# Tetrak): release.yml computes each version from the commit history and
+# tags it, so a literal here would be a second source of truth that nothing
+# updates.
+dynamic = ["version"]
+description = "A name authority from a dated Wikidata snapshot: variant names in every language, fold keys for retrieval and the VIAF, GND, ISNI and GeoNames identifiers, for catalogue search across scripts"
+readme = "README.md"
+# Runs beside tetrak-translit in other people's indexers and catalogue
+# tooling: meet the supported Pythons where they are.
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Stephen Masters" },
+    { name = "Yvette Mankerian" },
+]
+keywords = [
+    "armenian",
+    "name-authority",
+    "variant-names",
+    "authority-control",
+    "wikidata",
+    "viaf",
+    "search",
+    "libraries",
+    "archives",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Information Technology",
+    "Natural Language :: Armenian",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Database",
+]
+# tetrak-translit and nothing else: the fold is what keys the names, and
+# the network is the standard library's. A release of tetrak-translit that
+# changes keys changes this package's keys too, so the pin is to the major.
+dependencies = ["tetrak-translit>=3.4,<4"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5", "mypy>=1.10"]
+# Builds the Sphinx reference published to GitHub Pages.
+apidocs = ["sphinx>=8.0", "sphinx-argparse>=0.6.1", "furo>=2024.8", "myst-parser>=4.0"]
+
+[project.scripts]
+tetrak-authority = "tetrak_authority.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/scattercode/tetrak-authority"
+Documentation = "https://scattercode.github.io/tetrak-authority/"
+Tetrak = "https://tetrak.dev/"
+Source = "https://github.com/scattercode/tetrak-authority"
+Changelog = "https://github.com/scattercode/tetrak-authority/blob/main/CHANGELOG.md"
+Issues = "https://github.com/scattercode/tetrak-authority/issues"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+# Writes the resolved version into the package at build time, so an installed
+# copy can report it without git present. Generated, therefore gitignored.
+version-file = "src/tetrak_authority/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tetrak_authority"]
+
+[tool.ruff]
+line-length = 100
+
+# Declared explicitly rather than left to ruff's defaults, which differ
+# between ruff versions. Same arrangement as the sibling repos.
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # import sorting
+    "UP",  # pyupgrade
+    "B",   # bugbear
+]
+ignore = [
+    # Line length is enforced by `ruff format`.
+    "E501",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tetrak_authority"]
+
+[tool.mypy]
+strict = true
+packages = ["tetrak_authority"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["tetrak_authority"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true

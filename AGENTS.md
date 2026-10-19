@@ -51,11 +51,13 @@ recorded under `tests/data/recorded/` by `tests/record.py`.
 
 ### Keys come from tetrak-translit, and move with it
 
-A lookup matches on fold keys, and the fold is tetrak-translit's. A
-release of it that changes keys changes this package's keys too, so the
-dependency is pinned to the major, a snapshot must be rebuilt (or at
-least re-keyed) after a minor release, and `snapshot.json` records the
-translit version. Nothing here folds anything itself.
+A lookup matches on fold keys, and the fold is tetrak-translit's. Keys
+are computed when a snapshot is built and stored beside each name, so a
+release of tetrak-translit that changes keys changes this package's keys
+too: the dependency is pinned to the major, `tetrak-authority rekey`
+recomputes a snapshot's keys in place after a minor release, and
+`snapshot.json` records the translit version. Nothing here folds
+anything itself.
 
 ### The fetch is batched and the entity is the contract
 
@@ -76,7 +78,8 @@ the standard library's.
 | `src/tetrak_authority/model.py` | `Entity`, `Name`, `key_of`: the record and its keys |
 | `src/tetrak_authority/wikidata.py` | The polite client: SPARQL `select`, API `search`, pacing, retries |
 | `src/tetrak_authority/snapshot.py` | `Scope`, `Box`, the enumeration and fetch queries, `build`, `count` |
-| `src/tetrak_authority/authority.py` | `Authority.load`, `match`, `names_for`: offline lookups |
+| `src/tetrak_authority/index.py` | The SQLite index beside a snapshot: records, keys, words |
+| `src/tetrak_authority/authority.py` | `Authority.load`, `match`, `names_for`: offline lookups through the index |
 | `src/tetrak_authority/cli.py` | `tetrak-authority`, argparse |
 | `tests/` | pytest over recorded responses; `tests/record.py` refreshes them |
 | `docs/` | Sphinx (furo, MyST), published to GitHub Pages at each release |
