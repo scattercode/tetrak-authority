@@ -56,5 +56,7 @@
   "requests": 9,
   "seconds": 0.0,
   "library": "tetrak-authority 0.0.0",
-  "fold": "tetrak-translit 3.5.0"
+  "fold": "tetrak-translit 4.0.0",
+  "index": "authority.sqlite",
+  "rekeyed": "2026-10-19"
 }
