@@ -49,7 +49,7 @@ classifiers = [
 # tetrak-translit and nothing else: the fold is what keys the names, and
 # the network is the standard library's. A release of tetrak-translit that
 # changes keys changes this package's keys too, so the pin is to the major.
-dependencies = ["tetrak-translit>=3.4,<4"]
+dependencies = ["tetrak-translit>=4,<5"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5", "mypy>=1.10"]

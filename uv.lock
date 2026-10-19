@@ -1405,17 +1405,17 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "sphinx", marker = "extra == 'apidocs'", specifier = ">=8.0" },
     { name = "sphinx-argparse", marker = "extra == 'apidocs'", specifier = ">=0.6.1" },
-    { name = "tetrak-translit", specifier = ">=3.4,<4" },
+    { name = "tetrak-translit", specifier = ">=4,<5" },
 ]
 provides-extras = ["apidocs", "dev"]
 
 [[package]]
 name = "tetrak-translit"
-version = "3.5.0"
+version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1e/e3/fb1e0d3331084d3f2c0d4179a00b35b2a83eb68697227df983aceab1d569/tetrak_translit-3.5.0.tar.gz", hash = "sha256:15e7b0a0ddc0dcbbffd658b352e7d7d6b4bea70750269ccbb097f0dc525b8520", size = 211634, upload-time = "2026-10-18T23:05:11.446Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/c3/43fea08f45b0e717e1e821489e7e2aff4af96852d2461b2ced53453381a7/tetrak_translit-4.0.0.tar.gz", hash = "sha256:27d30a584adeb621ce2d6af4903b1aabbd85ef48bc0e2cb918b62fc4d80b1f3d", size = 212199, upload-time = "2026-10-19T08:53:11.291Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/46/c094ddc235fd1b0f428f287fff49508b150e083c954bd750666db46ac62c/tetrak_translit-3.5.0-py3-none-any.whl", hash = "sha256:498250ede377c09b2e8ea67940906eab5e5e9d6fbb3a67621d6c2d2211a96de3", size = 53203, upload-time = "2026-10-18T23:05:09.99Z" },
+    { url = "https://files.pythonhosted.org/packages/94/94/c09712d14912166cee519b734ec5f86bdfbc21b68cca2f418b398232cc1f/tetrak_translit-4.0.0-py3-none-any.whl", hash = "sha256:b2df73348ab05b50a59b6e242ae2f608ebec814bec8a3856f899fcb34fa422bf", size = 53386, upload-time = "2026-10-19T08:53:09.642Z" },
 ]
 
 [[package]]
